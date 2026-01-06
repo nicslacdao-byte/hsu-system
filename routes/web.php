@@ -8,6 +8,8 @@ use App\Http\Controllers\StudentController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\AdminController;
+use Illuminate\Support\Facades\Artisan;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -73,4 +75,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/my-appointments', function () { return redirect('/'); });
     Route::get('/medical-records', function () { return redirect('/'); });
 
+});
+
+    Route::get('/run-seeder', function () {
+    try {
+        Artisan::call('db:seed');
+        return 'SUCCESS: Seeder ran! You can now login as Admin (0000).';
+    } catch (\Exception $e) {
+        return 'Error: ' . $e->getMessage();
+    }
 });
