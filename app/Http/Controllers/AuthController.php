@@ -2,88 +2,81 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use App\Models\User;
 
 class AuthController extends Controller
 {
-    // --- REGISTER LOGIC ---
-    public function register(Request $request)
-    {
-        // 1. Validate inputs
-        $request->validate([
-            'email' => 'required|email|unique:users',
-            'password' => 'required|confirmed|min:6', // 'confirmed' checks password_confirmation field
-            'role' => 'required'
-        ]);
-
-        // 2. Create the User in Database
-        User::create([
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => $request->role
-        ]);
-
-        // 3. NO Auto-Login. Redirect to Login Page with Success Message.
-        return redirect('/login')->with('success', 'Registration successful! Please log in.');
+    // Show Login Page
+    function login(){
+        return view('auth.login');
     }
 
-    // --- LOGIN LOGIC ---
-    public function login(Request $request)
-    {
-        // 1. Validate inputs
-        // IMPORTANT FIX: Removed '|email' rule so "0000" is accepted as a string
-        $credentials = $request->validate([
-            'email' => 'required',
-            'password' => 'required',
-            'role' => 'required' // We must receive the role (student/staff/admin) from the form
+    // Show Register Page
+    function register(){
+        return view('auth.register');
+    }
+
+    // Handle Login Logic (Updated for Admin 0000)
+    function loginPost(Request $request){
+        $request->validate([
+            'email' => 'required', // Removed '|email' so '0000' is allowed
+            'password' => 'required'
         ]);
 
-        // 2. Attempt Login with STRICT ROLE CHECK
-        // We only verify email & password first
-        if (Auth::attempt($request->only('email', 'password'))) {
-            $request->session()->regenerate();
+        $credentials = $request->only('email', 'password');
 
-            $user = Auth::user();
-
-            // --- STRICT SEPARATION LOGIC ---
-            // If the Database Role doesn't match the Tab they clicked...
-            if ($user->role !== $request->role) {
-
-                // Kick them out immediately
-                Auth::logout();
-                $request->session()->invalidate();
-                $request->session()->regenerateToken();
-
-                return back()->withErrors([
-                    'email' => 'Access Denied: You cannot log in here. Please use the correct portal (Student/Staff/Admin).',
-                ]);
-            }
-
-            // 3. Redirect Based on Role
-            if ($user->role === 'admin') {
-                return redirect()->intended('/'); // Routes will send this to AdminController
-            } elseif ($user->role === 'staff') {
-                return redirect()->intended('/'); // Routes will send this to StaffController
-            }
-
-            return redirect()->intended('/'); // Routes will send this to Student Dashboard
+        if(Auth::attempt($credentials)){
+            return redirect()->intended(route('dashboard'));
         }
 
-        // 4. Failed?
-        return back()->withErrors([
-            'email' => 'Invalid credentials or incorrect user type selected.',
-        ]);
+        return redirect(route('login'))->with("error", "Login details are not valid");
     }
 
-    // --- LOGOUT LOGIC ---
-    public function logout(Request $request)
+    // Handle Registration Logic (Updated to force 'student' role)
+    function registerPost(Request $request){
+        $request->validate([
+            'name' => 'required',
+            'email' => 'required|email|unique:users',
+            'password' => 'required'
+        ]);
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'role' => 'student' // <--- Added this to force Student role
+        ]);
+
+        if($user){
+            Auth::login($user);
+            return redirect()->intended(route('dashboard'));
+        }
+
+        return redirect(route('register'))->with("error", "Registration failed");
+    }
+
+    // Dashboard Redirection (Updated to handle Admin vs Student)
+    public function dashboard()
     {
-        Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-        return redirect('/login');
+        // Get the currently logged in user
+        $user = Auth::user();
+
+        // If the user is an ADMIN, send them to the Admin Panel
+        if ($user->role === 'admin') {
+            return redirect()->route('admin.dashboard');
+        }
+
+        // If the user is a STUDENT/STAFF, show the normal dashboard
+        return view('dashboard');
+    }
+
+    // Handle Logout
+    function logout(){
+        Auth::logout(); // Use the Facade directly
+        return redirect(route('login'));
     }
 }
