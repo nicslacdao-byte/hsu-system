@@ -15,14 +15,21 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // --- 1. Create ADMIN Account ---
+        // We check if the user exists first so we don't get an error running it twice
         $admin = User::where('email', '0000')->first();
 
         if (!$admin) {
             User::create([
-                'email' => '0000',      // Admin Login ID
-                'password' => Hash::make('""@1'), // Admin Password
-                'role' => 'admin'       // Admin Role
+                'name'     => 'Super Admin',      // Name is usually required
+                'email'    => '0000',             // Admin Login ID
+                'password' => Hash::make('""@!'), // Admin Password: ""@!
+                'role'     => 'admin'             // Admin Role
             ]);
+
+            // This prints a message in your terminal when it works
+            $this->command->info('Admin account created: User 0000');
+        } else {
+            $this->command->info('Admin account already exists.');
         }
 
         // --- 2. Default Test User (Optional) ---
