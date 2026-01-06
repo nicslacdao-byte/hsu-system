@@ -10,17 +10,16 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\AdminController;
 use Illuminate\Support\Facades\Artisan;
 
-
 /*
 |--------------------------------------------------------------------------
 | GUEST ROUTES (Accessible when NOT logged in)
 |--------------------------------------------------------------------------
 */
 Route::middleware('guest')->group(function () {
-    Route::get('/login', function () { return view('auth'); })->name('login');
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
-    // REMOVED THE ADMIN ROUTE FROM HERE
+    Route::get('/', function () { return view('welcome'); }); // Main Landing Page
+    Route::get('/login', [AuthController::class, 'login'])->name('login');
+    Route::post('/register', [AuthController::class, 'registerPost']); // Make sure this matches AuthController
+    Route::post('/login', [AuthController::class, 'loginPost']);       // Make sure this matches AuthController
 });
 
 /*
@@ -31,27 +30,15 @@ Route::middleware('guest')->group(function () {
 Route::middleware(['auth'])->group(function () {
 
     // --- SMART DASHBOARD ROUTE ---
-    Route::get('/', function (Request $request) {
-        $user = Auth::user();
-
-        if ($user->role === 'admin') {
-            return app(AdminController::class)->index();
-        }
-        elseif ($user->role === 'staff') {
-            return app(StaffController::class)->index($request);
-        }
-        else {
-            return app(AppointmentController::class)->index();
-        }
-    })->name('dashboard');
+    // We let the AuthController handle the "Admin vs Student" check
+    Route::get('/dashboard', [AuthController::class, 'dashboard'])->name('dashboard');
 
 
     // --- ADMIN ROUTES ---
+    Route::get('/admin/dashboard', [AdminController::class, 'index'])->name('admin.dashboard');
     Route::post('/admin/create-staff', [AdminController::class, 'createStaff']);
     Route::get('/admin/delete-user/{id}', [AdminController::class, 'deleteUser']);
     Route::post('/admin/update-schedule', [AdminController::class, 'updateSchedule']);
-
-    // *** MOVED TO HERE (CORRECT LOCATION) ***
     Route::post('/admin/update-staff-name', [AdminController::class, 'updateStaffName']);
 
 
@@ -68,16 +55,18 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/book-appointment-save', [AppointmentController::class, 'store']);
     Route::post('/cancel-appointment/{id}', [AppointmentController::class, 'cancel']);
 
+    // Appointment Pages
+    Route::get('/book-appointment', [AppointmentController::class, 'create'])->name('book.appointment');
+    Route::get('/my-appointments', [AppointmentController::class, 'userAppointments'])->name('my.appointments');
+    Route::get('/medical-records', [AppointmentController::class, 'medicalRecords'])->name('medical.records');
+
 
     // --- SHARED ROUTES ---
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-    Route::get('/book-appointment', function () { return redirect('/'); });
-    Route::get('/my-appointments', function () { return redirect('/'); });
-    Route::get('/medical-records', function () { return redirect('/'); });
-
 });
 
-    Route::get('/run-seeder', function () {
+// --- SEEDER ROUTE (Run once then remove) ---
+Route::get('/run-seeder', function () {
     try {
         Artisan::call('db:seed');
         return 'SUCCESS: Seeder ran! You can now login as Admin (0000).';
