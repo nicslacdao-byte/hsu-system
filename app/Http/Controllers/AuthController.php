@@ -10,33 +10,40 @@ use App\Models\User;
 
 class AuthController extends Controller
 {
-    // Show Login Page
+    // 1. Show Login View
     function login(){
-        return view('auth.login');
+        // ERROR NOTE: Ensure you have a file at resources/views/auth/login.blade.php
+        // If your file is just 'login.blade.php' in views, change this to: return view('login');
+        if (view()->exists('auth.login')) {
+            return view('auth.login');
+        }
+        return view('login'); // Fallback if it's not in the auth folder
     }
 
-    // Show Register Page
-    function register(){
-        return view('auth.register');
-    }
-
-    // Handle Login Logic (Updated for Admin 0000)
+    // 2. Handle Login Submission
     function loginPost(Request $request){
         $request->validate([
-            'email' => 'required', // Removed '|email' so '0000' is allowed
+            'email' => 'required', // Allows '0000'
             'password' => 'required'
         ]);
 
-        $credentials = $request->only('email', 'password');
-
-        if(Auth::attempt($credentials)){
+        // Attempt login
+        if(Auth::attempt($request->only('email', 'password'))){
             return redirect()->intended(route('dashboard'));
         }
 
         return redirect(route('login'))->with("error", "Login details are not valid");
     }
 
-    // Handle Registration Logic (Updated to force 'student' role)
+    // 3. Show Register View
+    function register(){
+        if (view()->exists('auth.register')) {
+            return view('auth.register');
+        }
+        return view('register');
+    }
+
+    // 4. Handle Register Submission
     function registerPost(Request $request){
         $request->validate([
             'name' => 'required',
@@ -48,7 +55,7 @@ class AuthController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'role' => 'student' // <--- Added this to force Student role
+            'role' => 'student' // Forces Student Role
         ]);
 
         if($user){
@@ -59,24 +66,24 @@ class AuthController extends Controller
         return redirect(route('register'))->with("error", "Registration failed");
     }
 
-    // Dashboard Redirection (Updated to handle Admin vs Student)
+    // 5. Dashboard Redirector (The Traffic Cop)
     public function dashboard()
     {
-        // Get the currently logged in user
         $user = Auth::user();
 
-        // If the user is an ADMIN, send them to the Admin Panel
+        // Redirect Admin to Admin Controller
         if ($user->role === 'admin') {
             return redirect()->route('admin.dashboard');
         }
 
-        // If the user is a STUDENT/STAFF, show the normal dashboard
+        // Show normal dashboard for others
+        // ERROR NOTE: Ensure resources/views/dashboard.blade.php exists
         return view('dashboard');
     }
 
-    // Handle Logout
+    // 6. Logout
     function logout(){
-        Auth::logout(); // Use the Facade directly
+        Auth::logout();
         return redirect(route('login'));
     }
 }
