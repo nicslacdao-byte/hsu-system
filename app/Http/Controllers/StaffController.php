@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\StudentProfile;
 use App\Models\Appointment;
 use App\Models\DailyLimit;
-use App\Models\Announcement;
+use App\Models\Announcement; // <--- IMPORTANT: Add this
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -37,26 +37,13 @@ class StaffController extends Controller
         $freshmenApps = Appointment::where('appointment_type', 'LIKE', '%Freshmen%')->count();
         $ojtApps = Appointment::where('appointment_type', 'LIKE', '%COE%')->orWhere('appointment_type', 'LIKE', '%OJT%')->count();
 
-        // --- UNIVERSAL CHART DATA (Works on MySQL & Postgres) ---
+        // Charts Data
         $months = range(1, 12);
         $completedData = array_fill(0, 12, 0);
         $pendingData = array_fill(0, 12, 0);
 
-        // Detect Database Driver to choose correct SQL syntax
-        $dbDriver = DB::connection()->getDriverName();
-        $monthFunc = $dbDriver === 'pgsql' ? 'EXTRACT(MONTH FROM appointment_date)' : 'MONTH(appointment_date)';
-
-        $completedCounts = Appointment::select(DB::raw("$monthFunc as month"), DB::raw('count(*) as count'))
-                            ->where('status', 'Completed')
-                            ->whereYear('appointment_date', Carbon::now()->year)
-                            ->groupBy('month')
-                            ->pluck('count', 'month');
-
-        $pendingCounts = Appointment::select(DB::raw("$monthFunc as month"), DB::raw('count(*) as count'))
-                            ->whereIn('status', ['Pending', 'Approved'])
-                            ->whereYear('appointment_date', Carbon::now()->year)
-                            ->groupBy('month')
-                            ->pluck('count', 'month');
+        $completedCounts = Appointment::select(DB::raw('MONTH(appointment_date) as month'), DB::raw('count(*) as count'))->where('status', 'Completed')->whereYear('appointment_date', Carbon::now()->year)->groupBy('month')->pluck('count', 'month');
+        $pendingCounts = Appointment::select(DB::raw('MONTH(appointment_date) as month'), DB::raw('count(*) as count'))->whereIn('status', ['Pending', 'Approved'])->whereYear('appointment_date', Carbon::now()->year)->groupBy('month')->pluck('count', 'month');
 
         foreach ($months as $month) {
             if (isset($completedCounts[$month])) $completedData[$month - 1] = $completedCounts[$month];
@@ -83,33 +70,40 @@ class StaffController extends Controller
             'status' => $percentChange >= 0 ? 'Increase' : 'Decrease'
         ];
 
-        // 4. Fetch Announcements
+        // 4. NEW: Fetch Announcements
         $announcements = Announcement::orderBy('created_at', 'desc')->get();
 
         return view('staff_dashboard', compact(
             'students', 'appointments',
             'totalApps', 'freshmenApps', 'ojtApps',
             'completedData', 'pendingData', 'comparisonData',
-            'announcements'
+            'announcements' // <--- Pass to view
         ));
     }
 
-    // ... (Keep the rest of your functions: storeAnnouncement, deleteAnnouncement, getCalendarData, setDailyLimit, updateStatus) ...
-    // Note: Make sure you copy/paste your existing functions below this line!
-    // Since I can't see your full file, just paste the functions we wrote earlier here.
+    // --- NEW FUNCTIONS FOR ANNOUNCEMENTS ---
+    public function storeAnnouncement(Request $request) {
+        Announcement::create($request->all());
+        return back()->with('success', 'Announcement posted!');
+    }
 
-    public function storeAnnouncement(Request $request) { Announcement::create($request->all()); return back()->with('success', 'Posted!'); }
-    public function deleteAnnouncement($id) { Announcement::destroy($id); return back()->with('success', 'Deleted.'); }
+    public function deleteAnnouncement($id) {
+        Announcement::destroy($id);
+        return back()->with('success', 'Announcement deleted.');
+    }
 
+    // (Keep existing AJAX functions)
     public function getCalendarData() {
         $bookings = Appointment::selectRaw('appointment_date, count(*) as total')->whereIn('status', ['Pending', 'Approved'])->groupBy('appointment_date')->pluck('total', 'appointment_date');
         $limits = DailyLimit::pluck('limit', 'date');
         return response()->json(['bookings' => $bookings, 'limits' => $limits]);
     }
+
     public function setDailyLimit(Request $request) {
         DailyLimit::updateOrCreate(['date' => $request->date], ['limit' => $request->limit]);
         return response()->json(['success' => true]);
     }
+
     public function updateStatus(Request $request) {
         $profile = StudentProfile::find($request->profile_id);
         if ($profile) {

@@ -2,88 +2,88 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use App\Models\User;
 
 class AuthController extends Controller
 {
-    // 1. Show Login View
-    function login(){
-        // ERROR NOTE: Ensure you have a file at resources/views/auth/login.blade.php
-        // If your file is just 'login.blade.php' in views, change this to: return view('login');
-        if (view()->exists('auth.login')) {
-            return view('auth.login');
-        }
-        return view('login'); // Fallback if it's not in the auth folder
-    }
-
-    // 2. Handle Login Submission
-    function loginPost(Request $request){
+    // --- REGISTER LOGIC ---
+    public function register(Request $request)
+    {
+        // 1. Validate inputs
         $request->validate([
-            'email' => 'required', // Allows '0000'
-            'password' => 'required'
-        ]);
-
-        // Attempt login
-        if(Auth::attempt($request->only('email', 'password'))){
-            return redirect()->intended(route('dashboard'));
-        }
-
-        return redirect(route('login'))->with("error", "Login details are not valid");
-    }
-
-    // 3. Show Register View
-    function register(){
-        if (view()->exists('auth.register')) {
-            return view('auth.register');
-        }
-        return view('register');
-    }
-
-    // 4. Handle Register Submission
-    function registerPost(Request $request){
-        $request->validate([
-            'name' => 'required',
             'email' => 'required|email|unique:users',
-            'password' => 'required'
+            'password' => 'required|confirmed|min:6', // 'confirmed' checks password_confirmation field
+            'role' => 'required'
         ]);
 
-        $user = User::create([
-            'name' => $request->name,
+        // 2. Create the User in Database
+        User::create([
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'role' => 'student' // Forces Student Role
+            'role' => $request->role
         ]);
 
-        if($user){
-            Auth::login($user);
-            return redirect()->intended(route('dashboard'));
-        }
-
-        return redirect(route('register'))->with("error", "Registration failed");
+        // 3. NO Auto-Login. Redirect to Login Page with Success Message.
+        return redirect('/login')->with('success', 'Registration successful! Please log in.');
     }
 
-    // 5. Dashboard Redirector (The Traffic Cop)
-    public function dashboard()
+    // --- LOGIN LOGIC ---
+    public function login(Request $request)
     {
-        $user = Auth::user();
+        // 1. Validate inputs
+        // IMPORTANT FIX: Removed '|email' rule so "0000" is accepted as a string
+        $credentials = $request->validate([
+            'email' => 'required',
+            'password' => 'required',
+            'role' => 'required' // We must receive the role (student/staff/admin) from the form
+        ]);
 
-        // Redirect Admin to Admin Controller
-        if ($user->role === 'admin') {
-            return redirect()->route('admin.dashboard');
+        // 2. Attempt Login with STRICT ROLE CHECK
+        // We only verify email & password first
+        if (Auth::attempt($request->only('email', 'password'))) {
+            $request->session()->regenerate();
+
+            $user = Auth::user();
+
+            // --- STRICT SEPARATION LOGIC ---
+            // If the Database Role doesn't match the Tab they clicked...
+            if ($user->role !== $request->role) {
+
+                // Kick them out immediately
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                return back()->withErrors([
+                    'email' => 'Access Denied: You cannot log in here. Please use the correct portal (Student/Staff/Admin).',
+                ]);
+            }
+
+            // 3. Redirect Based on Role
+            if ($user->role === 'admin') {
+                return redirect()->intended('/'); // Routes will send this to AdminController
+            } elseif ($user->role === 'staff') {
+                return redirect()->intended('/'); // Routes will send this to StaffController
+            }
+
+            return redirect()->intended('/'); // Routes will send this to Student Dashboard
         }
 
-        // Show normal dashboard for others
-        // ERROR NOTE: Ensure resources/views/dashboard.blade.php exists
-        return view('dashboard');
+        // 4. Failed?
+        return back()->withErrors([
+            'email' => 'Invalid credentials or incorrect user type selected.',
+        ]);
     }
 
-    // 6. Logout
-    function logout(){
+    // --- LOGOUT LOGIC ---
+    public function logout(Request $request)
+    {
         Auth::logout();
-        return redirect(route('login'));
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+        return redirect('/login');
     }
 }

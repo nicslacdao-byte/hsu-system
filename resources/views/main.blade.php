@@ -220,7 +220,7 @@
             <div class="user-info">
                 <div class="user-name" id="sidebar-name-display">
                     @if(Auth::user()->studentProfile)
-                        {{ Auth::user()->studentProfile->formatted_name }}
+                        {{ Auth::user()->studentProfile->firstname }} {{ Auth::user()->studentProfile->lastname }}
                     @endif
                 </div>
                 <div class="user-role">(STUDENT)</div>
@@ -258,6 +258,27 @@
                     </span>!
                 </h1>
 
+                @if(Auth::user()->has_findings)
+                    <div style="background-color: #fff3cd; color: #856404; padding: 20px; border-radius: 15px; border-left: 6px solid #ffc107; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                            <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.5rem;"></i>
+                            <h3 style="font-size: 1.2rem; font-weight: 800; margin: 0;">MEDICAL FINDINGS ALERT</h3>
+                        </div>
+                        <p style="margin-bottom: 10px;">The Health Services Unit has added a note to your record:</p>
+                        <div style="background: rgba(255,255,255,0.5); padding: 15px; border-radius: 10px; font-weight: bold; border: 1px dashed #d39e00;">
+                            "{{ Auth::user()->staff_notes }}"
+                        </div>
+                        <small style="display: block; margin-top: 10px; opacity: 0.8;">Please visit the clinic or contact staff for further instructions.</small>
+                    </div>
+                @else
+                    <div style="background-color: #d1fae5; color: #065f46; padding: 15px 20px; border-radius: 15px; border-left: 6px solid #10b981; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
+                        <i class="fa-solid fa-circle-check" style="font-size: 1.5rem;"></i>
+                        <div>
+                            <h4 style="font-weight: 800; font-size: 1rem;">All Clear</h4>
+                            <p style="font-size: 0.9rem; margin: 0;">You have no pending medical findings.</p>
+                        </div>
+                    </div>
+                @endif
                 @if(isset($announcements) && $announcements->count() > 0)
                     <div style="margin-bottom: 25px;">
                         <h3 style="font-size: 1.1rem; font-weight: 700; color: #555; margin-bottom: 15px;"><i class="fa-solid fa-bullhorn"></i> Latest Updates</h3>
@@ -428,14 +449,9 @@
                                     <p>Date: <span id="selectedDateDisplay" style="font-weight:bold; color:#00d64f;">None</span></p>
                                     <select class="time-select" id="timeSlotSelect">
                                         <option value="" disabled selected>Select time...</option>
-                                        <option value="8:00 AM - 9:00 AM">8:00 AM - 9:00 AM</option>
-                                        <option value="9:00 AM - 10:00 AM">9:00 AM - 10:00 AM</option>
-                                        <option value="10:00 AM - 11:00 AM">10:00 AM - 11:00 AM</option>
-                                        <option value="11:00 AM - 12:00 PM">11:00 AM - 12:00 PM</option>
-                                        <option value="1:00 PM - 2:00 PM">1:00 PM - 2:00 PM</option>
-                                        <option value="2:00 PM - 3:00 PM">2:00 PM - 3:00 PM</option>
-                                        <option value="3:00 PM - 4:00 PM">3:00 PM - 4:00 PM</option>
-                                        <option value="4:00 PM - 5:00 PM">4:00 PM - 5:00 PM</option>
+                                        <option value="8:00 AM - 12:00 PM">8:00 AM - 12:00 PM</option>
+                                        <option value="1:00 PM - 5:00 PM">1:00 PM - 5:00 PM</option>
+
                                     </select>
                                 </div>
                                 <div style="margin-top: 150px;">
@@ -496,14 +512,19 @@
 
             <div id="my-appointments" class="page-section">
                 <h1 class="welcome-title">MY APPOINTMENTS</h1>
-
                 <div class="blue-main-card" style="min-height: auto; background-color: white; color: #333; padding: 0;">
 
-                    @if($appointments->isEmpty())
+                    {{-- 1. Create a filtered variable for cleaner logic --}}
+                    @php
+                        $activeAppointments = $appointments->where('appointment_date', '>=', \Carbon\Carbon::today()->format('Y-m-d'));
+                    @endphp
+
+                    {{-- 2. Check if the FILTERED list is empty --}}
+                    @if($activeAppointments->isEmpty())
                         <div style="padding: 50px; text-align: center;">
                             <i class="fa-solid fa-calendar-xmark" style="font-size: 3rem; color: #ccc; margin-bottom: 20px;"></i>
-                            <h3 style="color: #555;">No Appointments Found</h3>
-                            <p style="color: #777;">You haven't booked any appointments yet.</p>
+                            <h3 style="color: #555;">No Active Appointments</h3>
+                            <p style="color: #777;">You have no upcoming appointments.</p>
                             <button class="btn-action" style="float: none; margin-top: 20px; background-color: #1553be; color: white;" onclick="triggerSidebarClick('book-appointment')">
                                 Book Now
                             </button>
@@ -520,12 +541,8 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach($appointments as $apt)
-                                    @php
-                                        // Check if date is in the past (yesterday or before)
-                                        $isPast = \Carbon\Carbon::parse($apt->appointment_date)->isPast() && !\Carbon\Carbon::parse($apt->appointment_date)->isToday();
-                                    @endphp
-
+                                {{-- 3. Loop through the filtered list --}}
+                                @foreach($activeAppointments as $apt)
                                     <tr>
                                         <td style="font-weight: 600;">
                                             {{ \Carbon\Carbon::parse($apt->appointment_date)->format('M d, Y') }}
@@ -535,22 +552,14 @@
                                         <td>
                                             @if($apt->status == 'Cancelled')
                                                 <span class="status-badge" style="background-color: #fee2e2; color: #991b1b;">Cancelled</span>
-
-                                            @elseif($apt->status == 'Completed')
-                                                <span class="status-badge" style="background-color: #d1fae5; color: #065f46;"><i class="fa-solid fa-check"></i> DONE</span>
-
-                                            @elseif($isPast)
-                                                <span class="status-badge" style="background-color: #e5e7eb; color: #374151;">Expired</span>
-
                                             @elseif($apt->status == 'Approved')
                                                 <span class="status-badge status-active">Approved</span>
-
                                             @else
                                                 <span class="status-badge" style="background-color: #fff7cd; color: #b78103;">Pending</span>
                                             @endif
                                         </td>
                                         <td>
-                                            @if($apt->status != 'Cancelled' && $apt->status != 'Completed' && !$isPast)
+                                            @if($apt->status != 'Cancelled' && $apt->status != 'Completed')
                                                 <button class="btn-cancel" onclick="cancelAppointment({{ $apt->id }})">Cancel</button>
                                             @else
                                                 <span style="color:#ccc; font-size: 0.8rem; font-style: italic;">Closed</span>
@@ -571,7 +580,7 @@
                     <div class="blue-main-card" style="min-height: auto;">
                         <h3 style="margin-bottom: 20px;">Student Profile Information</h3>
                         <table class="records-table">
-                            <tr><th>Full Name</th><td>{{ Auth::user()->studentProfile->formatted_name }}</td></tr>
+                            <tr><th>Full Name</th><td>{{ Auth::user()->studentProfile->firstname }} {{ Auth::user()->studentProfile->lastname }}</td></tr>
                             <tr><th>Birthday</th><td>{{ Auth::user()->studentProfile->birthday }}</td></tr>
                             <tr><th>Email</th><td>{{ Auth::user()->studentProfile->email }}</td></tr>
                             <tr><th>College</th><td>{{ Auth::user()->studentProfile->college }}</td></tr>
@@ -599,6 +608,9 @@
                     <p>No medical record found. Please complete the "Book Appointment" process to create your profile.</p>
                 @endif
             </div>
+
+        </div>
+    </div>
 
     <script>
         const burgerBtn = document.getElementById('burgerBtn');
